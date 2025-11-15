@@ -1,40 +1,48 @@
 import 'dart:async';
 
-import 'package:bilitv/apis/bilibili/toview.dart';
-import 'package:bilitv/consts/assets.dart';
+import 'package:bilitv/apis/bilibili/history.dart';
 import 'package:bilitv/models/video.dart' show MediaCardInfo;
 import 'package:bilitv/pages/video_detail.dart';
 import 'package:bilitv/storages/cookie.dart';
-import 'package:bilitv/widgets/loading.dart' show buildLoadingStyle1;
+import 'package:bilitv/widgets/loading.dart';
 import 'package:bilitv/widgets/tooltip.dart';
 import 'package:bilitv/widgets/video_grid_view.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-class ToViewPage extends StatefulWidget {
+import '../consts/assets.dart';
+
+class HistoryPage extends StatefulWidget {
   final ValueNotifier<int> _tappedListener;
 
-  const ToViewPage(this._tappedListener, {super.key});
+  const HistoryPage(this._tappedListener, {super.key});
 
   @override
-  State<ToViewPage> createState() => _ToViewPageState();
+  State<HistoryPage> createState() => _HistoryPageState();
 }
 
-class _ToViewPageState extends State<ToViewPage> {
+class _HistoryPageState extends State<HistoryPage> {
+  HistoryCursor? cursor;
+  final pageVideoCount = 20;
   final _provider = VideoGridViewProvider();
 
   @override
   void initState() {
-    widget._tappedListener.addListener(_provider.refresh);
+    widget._tappedListener.addListener(_onRefresh);
     _provider.onLoad = _onLoad;
     super.initState();
   }
 
   @override
   void dispose() {
-    widget._tappedListener.removeListener(_provider.refresh);
+    widget._tappedListener.removeListener(_onRefresh);
     super.dispose();
     _provider.dispose();
+  }
+
+  Future<void> _onRefresh() async {
+    cursor = null;
+    await _provider.refresh();
   }
 
   Future<(List<MediaCardInfo>, bool)> _onLoad({
@@ -44,8 +52,14 @@ class _ToViewPageState extends State<ToViewPage> {
       return ([] as List<MediaCardInfo>, false);
     }
 
-    final videos = await listToView();
-    return (videos, false);
+    final (nextCursor, videos) = await listHistory(
+      cursor: cursor,
+      count: pageVideoCount,
+    );
+    if (nextCursor.max != 0) {
+      cursor = nextCursor;
+    }
+    return (videos, videos.length == pageVideoCount);
   }
 
   Future<void> _refreshFromData(List<MediaCardInfo> medias) async {
@@ -66,13 +80,13 @@ class _ToViewPageState extends State<ToViewPage> {
         onItemTap: _onVideoTapped,
         itemMenuActions: [
           ItemMenuAction(
-            title: '移除',
+            title: '历史记录',
             icon: Icons.playlist_remove_rounded,
             action: (media) {
               if (!loginInfoNotifier.value.isLogin) return;
 
-              deleteToView(media.avid);
-              pushTooltipInfo(context, '已从稍后再看中移除：${media.title}');
+              deleteHistory(media.avid);
+              pushTooltipInfo(context, '已从历史记录中移除：${media.title}');
               final newVideos = _provider.toList();
               newVideos.removeWhere((video) => video.avid == media.avid);
               _refreshFromData(newVideos);

@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:bilitv/apis/bilibili/recommend.dart';
+import 'package:bilitv/apis/bilibili/history.dart';
 import 'package:bilitv/apis/bilibili/toview.dart';
 import 'package:bilitv/models/video.dart' show MediaCardInfo;
 import 'package:bilitv/pages/video_detail.dart';
@@ -11,18 +11,20 @@ import 'package:bilitv/widgets/video_grid_view.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-class RecommendPage extends StatefulWidget {
+import '../consts/assets.dart';
+
+class HistoryPage extends StatefulWidget {
   final ValueNotifier<int> _tappedListener;
 
-  const RecommendPage(this._tappedListener, {super.key});
+  const HistoryPage(this._tappedListener, {super.key});
 
   @override
-  State<RecommendPage> createState() => _RecommendPageState();
+  State<HistoryPage> createState() => _HistoryPageState();
 }
 
-class _RecommendPageState extends State<RecommendPage> {
-  int page = 0;
-  final pageVideoCount = 30;
+class _HistoryPageState extends State<HistoryPage> {
+  HistoryCursor? cursor;
+  final pageVideoCount = 20;
   final _videos = VideoGridViewProvider();
   final ValueNotifier<bool> _isLoading = ValueNotifier<bool>(true);
 
@@ -52,7 +54,7 @@ class _RecommendPageState extends State<RecommendPage> {
     _lastRefresh = now;
 
     _isLoading.value = true;
-    page = 0;
+    cursor = null;
     _videos.clear();
     _pullMoreVideos().then((res) {
       _videos.addAll(res.$1);
@@ -68,7 +70,7 @@ class _RecommendPageState extends State<RecommendPage> {
   DateTime? _lastFetchMore;
 
   Future<void> _onVideoFocused(int index, MediaCardInfo _) async {
-    final lastLine = (index / 5).toInt() == ((_videos.length - 1) / 5).toInt();
+    final lastLine = (index / 5).floor() == ((_videos.length - 1) / 5).floor();
     if (!lastLine || _isFetchingMore) return;
 
     final now = DateTime.now();
@@ -86,15 +88,18 @@ class _RecommendPageState extends State<RecommendPage> {
   Future<(List<MediaCardInfo>, bool)> _pullMoreVideos({
     bool isFetchMore = false,
   }) async {
-    page++;
+    if (!loginInfoNotifier.value.isLogin) {
+      return ([] as List<MediaCardInfo>, false);
+    }
 
-    final videos = await listRecommendVideos(
-      page: page,
+    final (nextCursor, videos) = await listHistory(
+      cursor: cursor,
       count: pageVideoCount,
-      removeAvids: _videos.toList().map((e) => e.avid).toList(),
     );
-
-    return (videos, true);
+    if (nextCursor.max != 0) {
+      cursor = nextCursor;
+    }
+    return (videos, videos.length == pageVideoCount);
   }
 
   @override
@@ -105,6 +110,13 @@ class _RecommendPageState extends State<RecommendPage> {
         _videos.addAll(res.$1);
       }),
       builder: (context, _) {
+        if (_videos.isEmpty) {
+          return FractionallySizedBox(
+            widthFactor: 0.2,
+            child: Image.asset(Images.empty, fit: BoxFit.contain),
+          );
+        }
+
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: VideoGridView(

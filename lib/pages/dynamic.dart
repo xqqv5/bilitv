@@ -1,28 +1,30 @@
 import 'dart:async';
 
+import 'package:bilitv/apis/bilibili/dynamic.dart';
 import 'package:bilitv/apis/bilibili/toview.dart';
-import 'package:bilitv/consts/assets.dart';
 import 'package:bilitv/models/video.dart' show MediaCardInfo;
 import 'package:bilitv/pages/video_detail.dart';
 import 'package:bilitv/storages/auth.dart';
-import 'package:bilitv/widgets/loading.dart' show buildLoadingStyle1;
+import 'package:bilitv/widgets/loading.dart';
 import 'package:bilitv/widgets/tooltip.dart';
 import 'package:bilitv/widgets/video_grid_view.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-class ToViewPage extends StatefulWidget {
+import '../consts/assets.dart';
+
+class DynamicPage extends StatefulWidget {
   final ValueNotifier<int> _tappedListener;
 
-  const ToViewPage(this._tappedListener, {super.key});
+  const DynamicPage(this._tappedListener, {super.key});
 
   @override
-  State<ToViewPage> createState() => _ToViewPageState();
+  State<DynamicPage> createState() => _DynamicPageState();
 }
 
-class _ToViewPageState extends State<ToViewPage> {
-  int page = 0;
-  final pageVideoCount = 20;
+class _DynamicPageState extends State<DynamicPage> {
+  int offset = 0;
+  final pageVideoCount = 19;
   final _provider = VideoGridViewProvider();
 
   @override
@@ -40,7 +42,7 @@ class _ToViewPageState extends State<ToViewPage> {
   }
 
   Future<void> _onRefresh() async {
-    page = 0;
+    offset = 0;
     await _provider.refresh();
   }
 
@@ -51,12 +53,9 @@ class _ToViewPageState extends State<ToViewPage> {
       return ([] as List<MediaCardInfo>, false);
     }
 
-    page++;
-
-    final videos = await listToView(page: page, count: pageVideoCount + 1);
-    final hasMore = videos.length > pageVideoCount;
-    if (hasMore) videos.removeLast();
-    return (videos, hasMore);
+    final resp = await listDynamic(offset);
+    offset = resp.offset;
+    return (resp.medias, resp.hasMore);
   }
 
   void _onVideoTapped(_, MediaCardInfo video) {
@@ -72,18 +71,13 @@ class _ToViewPageState extends State<ToViewPage> {
         onItemTap: _onVideoTapped,
         itemMenuActions: [
           ItemMenuAction(
-            title: '移除',
-            icon: Icons.playlist_remove_rounded,
+            title: '稍后再看',
+            icon: Icons.playlist_add_rounded,
             action: (media) {
               if (!loginInfoNotifier.value.isLogin) return;
 
-              deleteToView(media.avid);
-              pushTooltipInfo(context, '已从稍后再看中移除：${media.title}');
-
-              // 避免服务器主从延迟
-              Future.delayed(const Duration(seconds: 1), () {
-                _onRefresh();
-              });
+              addToView(avid: media.avid);
+              pushTooltipInfo(context, '已加入稍后再看：${media.title}');
             },
           ),
         ],
